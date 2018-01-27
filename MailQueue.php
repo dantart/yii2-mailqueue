@@ -11,6 +11,7 @@ use Yii;
 use yii\swiftmailer\Mailer;
 use dantart\mailqueue\Message;
 use dantart\mailqueue\models\Queue;
+use yii\base\ErrorException;
 
 /**
  * MailQueue is a sub class of [yii\switmailer\Mailer](https://github.com/yiisoft/yii2-swiftmailer/blob/master/Mailer.php)
@@ -102,20 +103,23 @@ class MailQueue extends Mailer
 
 		$items = Queue::find()->where(['and', ['sent_time' => NULL], ['<', 'attempts', $this->maxAttempts], ['<=', 'time_to_send', date('Y-m-d H:i:s')]])->orderBy(['created_at' => SORT_ASC])->limit($this->mailsPerRound);
 		foreach ($items->each() as $item) {
-		    if ($message = $item->toMessage()) {
-			$attributes = ['attempts', 'last_attempt_time'];
-			if ($this->send($message)) {
-			    $item->sent_time = new \yii\db\Expression('NOW()');
-			    $attributes[] = 'sent_time';
-			} else {
-			    $success = false;
+			try {
+			    if ($message = $item->toMessage()) {
+					$attributes = ['attempts', 'last_attempt_time'];
+					if ($this->send($message)) {
+					    $item->sent_time = new \yii\db\Expression('NOW()');
+					    $attributes[] = 'sent_time';
+					} else {
+					    $success = false;
+					}
+					$item->attempts++;
+					$item->last_attempt_time = new \yii\db\Expression('NOW()');
+					$item->updateAttributes($attributes);
+			    }
+			} catch (ErrorException $e) {
+			    // 
 			}
 
-			$item->attempts++;
-			$item->last_attempt_time = new \yii\db\Expression('NOW()');
-
-			$item->updateAttributes($attributes);
-		    }
 		}
 	
 		// Purge messages now?
